@@ -1,0 +1,10 @@
+width,150
+height,50
+frame,1
+updateinterval,5
+anim_normal,test_button/normal.png
+anim_active,test_button/active.png
+anim_push,test_button/push.png
+anim_decide,test_button/decide.png
+anim_hold,test_button/hold.png
+anim_release,test_button/release.png

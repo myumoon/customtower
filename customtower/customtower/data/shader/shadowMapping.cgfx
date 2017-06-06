@@ -1,0 +1,223 @@
+/////////////////////////////////////////////////////////////
+//	シャドウマッピング
+/////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////
+//	グローバル変数
+/////////////////////////////////////////////////////////////
+float4x4	WorldViewProj2;		// ワールドビュープロジェクション行列
+float4x4	WorldLightProj;		// ワールドライトプロジェクション行列
+float4x4	WorldLightTexProj;	// テクスチャ空間へのプロジェクション行列
+float4x4	World;				// ワールド行列
+float3		LightPos;			// ライトの位置
+
+float4		g_diff		= {0.5f, 0.5f, 0.5f, 1.0f};		//ディフェーズ
+float4		g_amb		= {0.3f, 0.3f, 0.3f, 1.0f};		//アンビエント
+float		g_power		= 2.0;							//光沢の強さ
+
+
+// シャドウマップ
+sampler2D ShadowMap = sampler_state {
+	minFilter = Linear;
+	magFilter = Linear;
+	mipFilter = NONE;
+};
+
+
+// テクスチャ
+sampler2D DecalTex = sampler_state {
+	minFilter = Linear;
+	magFilter = Linear;
+	mipFilter = NONE;
+};
+
+
+/////////////////////////////////////////////////////////////
+//	入出力構造体定義
+/////////////////////////////////////////////////////////////
+
+//	C++アプリから頂点シェーダーへの入力構造体
+struct AppToVertex
+{
+	float4 Position : POSITION;
+	float4 Normal	: NORMAL;
+	float2 Texcoord	: TEXCOORD0;
+};
+
+
+//	頂点シェーダーからフラグメントシェーダーへの出力構造体
+struct VertexToFragment
+{
+	float4 Position			: POSITION;
+	float4 Diffuse			: COLOR0;
+	float4 HighLight		: COLOR1;
+	float4 ShadowTexCoord	: TEXCOORD0;	// シャドウマップでの座標を格納
+	float4 Depth			: TEXCOORD1;	// 深度を格納
+	float2 Texcoord			: TEXCOORD2;	// オブジェクトのテクスチャの座標
+};
+
+//フラグメントシェーダーの出力構造体
+struct FragOut
+{
+	float4 Color	: COLOR;
+};
+
+
+
+
+//////////////////////////////////////////////////////////
+//	頂点シェーダー
+//	シャドウマップの作成
+//////////////////////////////////////////////////////////
+VertexToFragment createShadowVs(AppToVertex IN)
+{
+	VertexToFragment OUT = (VertexToFragment)0;
+	
+	// ライトから見た表示座標を計算
+	float4 Position = mul(WorldLightProj, IN.Position);
+	
+	// 表示位置
+	OUT.Position = Position;
+	
+	// 影作成
+	OUT.ShadowTexCoord = Position;
+	
+	return OUT;
+}
+
+
+
+//////////////////////////////////////////////////////////
+//	フラグメントシェーダー
+//	シャドウマップの作成
+//////////////////////////////////////////////////////////
+FragOut createShadowFs(VertexToFragment IN)
+{
+	FragOut OUT = (FragOut)0;
+	
+	// 深度計算
+	// 頂点シェーダーで計算を行うと誤差が出る
+	OUT.Color = IN.ShadowTexCoord.z / IN.ShadowTexCoord.w;
+
+	//OUT.Color.r = 1.0f;
+	//OUT.Color.g = 0.0f;
+	//OUT.Color.b = 0.0f;
+	//OUT.Color.a = 1.0f;
+	
+	
+	
+	return OUT;
+}
+
+
+//-----------------------------------------------------------------------------
+
+
+//////////////////////////////////////////////////////////
+//	頂点シェーダー
+//	影をつけて描画する
+//////////////////////////////////////////////////////////
+VertexToFragment drawShadowVs(AppToVertex IN)
+{
+	VertexToFragment OUT = (VertexToFragment)0;
+	
+
+	// カメラから見た出力座標
+	OUT.Position = mul(WorldViewProj2, IN.Position);
+	
+	// ライトベクトルを計算
+	float3 L = normalize(LightPos - IN.Position.xyz);
+	
+	// 法線ベクトルを計算
+	float3 N = mul(IN.Normal, World);
+	
+	// 視線ベクトル
+	float3 E = normalize(LightPos - OUT.Position.xyz);
+
+	// 反射ベクトル
+	float3 R = -E + 2.0f * dot(N, E) * N;
+
+	// 色の指定
+	OUT.Diffuse		= g_diff * max(g_amb, dot(N, L));
+	OUT.HighLight	= pow(max(0.0f, dot(L, R)), g_power);
+
+	
+	// シャドウマップでの座標
+	OUT.ShadowTexCoord = mul(WorldLightTexProj, IN.Position);
+	
+	// 深度
+	OUT.Depth = mul(WorldLightProj, IN.Position);
+	
+	// テクスチャ座標
+	OUT.Texcoord = IN.Texcoord;
+	
+
+	return OUT;
+}
+
+
+
+
+
+///////////////////////////////////////////////////////////
+//	フラグメントシェーダー
+//	影をつけて描画する
+///////////////////////////////////////////////////////////
+FragOut drawShadowFs(VertexToFragment IN)
+{
+	FragOut OUT = (FragOut)0;
+
+
+	// 深度値を取り出す
+	float shadow = tex2Dproj(ShadowMap, IN.ShadowTexCoord).x;
+
+	// テクスチャの色を取得
+	float4 texcolor = f4tex2D(DecalTex, IN.Texcoord);
+	
+	// 色の決定
+	OUT.Color = IN.HighLight * texcolor + IN.Diffuse * texcolor;// + g_amb * texcolor;
+
+
+	// 深度値を比較して影のところを少し暗くする
+	// [検索]
+	if( shadow * IN.Depth.w < IN.Depth.z - 0.05f ) {
+		OUT.Color = g_amb * texcolor;			// 影のところは環境光の強さにする
+	}
+
+	return OUT;
+}
+
+
+//-----------------------------------------------------------------------------
+
+
+
+
+///////////////////////////////////////////////////////////
+// テクニックの定義
+///////////////////////////////////////////////////////////
+technique ShadowMap0 {
+
+	/* シャドウマップの生成 */
+	pass pass0 {
+		// 頂点シェーダー
+		VertexProgram = compile vp30 createShadowVs();
+		
+		// フラグメントシェーダー
+		FragmentProgram = compile fp30 createShadowFs();
+	}
+	
+}
+
+
+technique ShadowMap1 {
+	
+	/* シャドウマップを利用しての描画 */
+	pass pass1 {
+		// 頂点シェーダー
+		VertexProgram = compile vp30 drawShadowVs();
+
+		// フラグメントシェーダー
+		FragmentProgram = compile fp30 drawShadowFs();
+	}
+}

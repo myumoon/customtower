@@ -1,0 +1,12 @@
+// SCENE_TBL( enum名, 生成クラス, デバッグ用タイトル )
+SCENE_TBL( SCENE_ID_TITLE,				game::TitleScene,			"Title"					)
+SCENE_TBL( SCENE_ID_NETWORK,			game::NetworkScene,			"Network"				)
+SCENE_TBL( SCENE_ID_HOST_ROOM,			game::HostRoomScene,		"Host Room"				)
+SCENE_TBL( SCENE_ID_SEARCH_HOST_ROOM,	game::SearchHostRoomScene,	"Search Host Room"		)
+SCENE_TBL( SCENE_ID_NORMAL_BATTLE,		game::NormalBattleScene,	"NormalBattle"			)
+
+
+// デバッグ用
+//SCENE_TBL( SCENE_ID_DEBUG_MENU,			game::debug::DebugMenu	"Debug Menu"			)
+SCENE_TBL( SCENE_ID_MODEL_VIEWER,		game::ModelTestScene,		"Model Test"			)
+SCENE_TBL( SCENE_ID_STAGE_VIEWER,		game::debug::StageViewer,	"Stage Viewer"			)
